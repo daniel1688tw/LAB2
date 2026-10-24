@@ -98,6 +98,9 @@ def test_obs_prune():
     plan = layer_schedule(36, 9728, 0.21 * 36 * 100.9e6 / (3 * 2560), 2, 1, 128)
     assert plan[0] == plan[1] == plan[35] == 0 and all(p % 128 == 0 for p in plan)
     assert abs(sum(plan) * 3 * 2560 / (36 * 100.9e6) - 0.21) < 0.005
+    for target in (100.0, 500.0, 1300.0):  # the realised count never falls below a feasible target
+        plan = layer_schedule(6, 768, target, 2, 1, 64)
+        assert sum(plan) >= target and all(p % 64 == 0 for p in plan), (target, plan)
 
 
 def test_svd():

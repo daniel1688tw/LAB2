@@ -71,6 +71,13 @@ def layer_schedule(n_layers, n_channels, target_removed_channels, skip_first=2, 
         r = int(round(want / align)) * align
         carry = want - r
         plan[i] = r
+    # never fall short of the target because of the rounding: top up the least-pruned layers
+    cap = int(max_ratio * n_channels) // align * align
+    while sum(plan) < target_removed_channels:
+        i = min((j for j in active if plan[j] + align <= cap), key=lambda j: plan[j], default=None)
+        if i is None:
+            break
+        plan[i] += align
     return plan
 
 
