@@ -43,9 +43,15 @@ python summarize_logs.py    # 把 logs/caseN.log 轉成報告表格
 ```bash
 cd Part3
 bash run.sh                 # 預設 4.5 bits、MXFP4/6/8、128x128 tile、MXFP8 activation
-bash run.sh --budget 4.75   # 若 PPL > 15 可提高預算
+bash run.sh --budget 4.75   # 若 PPL > 15 可提高預算，或加 --rotate 32（block Hadamard 旋轉）
 bash sweep.sh               # baseline 與消融（結果在 logs/results.jsonl）
 ```
+
+### 小模型上的驗證結果（流程正確性，非正式數值）
+| | Case 1 | Case 2 | Case 3 | Case 4 | Part 3（4.5 bits） |
+|---|---|---|---|---|---|
+| 6 層小型 Qwen3（基準 PPL 45.83） | 75.5% / 45.89 | 81.1% / 45.89 | 50.0%（SVD 20.2%）/ 45.87 | 85.1%（剪枝 20.8%）/ 45.90 | 45.92（+rotate 45.80） |
+| Qwen3-4B 層維度、3 層隨機權重 | – | 81.10% | 50.14%（SVD 22.9%） | 85.12%（剪枝 20.5%） | – |
 
 ### 報告與打包
 * 報告草稿：`Part2/StudentID_report.md`、`Part3/StudentID_report.md`（方法、分析已寫好，`【待填】` 處填入實驗數值），
@@ -56,7 +62,7 @@ bash sweep.sh               # baseline 與消融（結果在 logs/results.jsonl�
 ```bash
 python tools/test_part1.py Part1/StudentID_Part1.ipynb          # Part 1 所有測試
 python Part2/tests/test_units.py                                 # GPTQ / RHT / OBS / SVD / allocator
-python Part2/tests/test_realdim.py                               # Qwen3-4B 層維度的形狀測試（CPU 約 10–20 分鐘）
+python Part2/tests/test_realdim.py                               # Qwen3-4B 層維度的形狀測試（4 核 CPU 約 45 分鐘）
 python Part3/tests/test_mx.py                                    # MX 格式（E4M3 與 torch.float8 逐位元一致）
 python Part2/tests/make_tiny_model.py /tmp/tb && source Part2/tests/env.sh /tmp/tb   # 離線小模型 + 假 WikiText
 ```
