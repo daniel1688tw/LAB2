@@ -97,7 +97,7 @@ dampening 1%。
    從該層跑到 logits，量測 `KL(p_fp ‖ p_q)`（8 段 × 512 tokens）。
 2. 每個候選 spec 以 Hessian 對角線 proxy `Σ_j H_jj ‖ΔW_:,j‖²` 換算同 bit 寬下不同 group size 的成本。
 3. 在 bits 預算下最小化 Σ cost：Lagrangian relaxation（二分搜尋 λ）+ 貪婪補滿剩餘預算。
-敏感度結果快取在 `cache/`，Case 1/2 共用。
+敏感度結果快取在 `cache/`，Case 1/2 共用（快取以設定為 key、不含程式版本：修改 `alloc.py` / `quant.py` 後請先 `rm -rf cache`）。
 
 ### Case 3：白化 SVD（`svd.py`，SVD-LLM）
 `H = S Sᵀ`（eigendecomposition），對 `W S` 做 SVD；截斷誤差 `‖(W−W_k)X‖² = Σ_{i>k} σ_i²`，所以在白化空間截斷對輸出是最佳的。
