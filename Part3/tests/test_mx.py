@@ -56,3 +56,11 @@ assert (idx[:100] > 0).float().mean() > 0.9
 assert torch.equal(tile_sums(torch.ones(256, 64), 128, 32), torch.full((2, 2), 4096.0))
 print("allocation ok, avg bits", float(avg))
 print("ALL MX TESTS PASSED")
+
+# block rotation keeps the full-precision product unchanged
+from adaptquant import block_rotate, hadamard  # noqa: E402
+H = hadamard(32, "cpu")
+W = torch.randn(64, 256)
+x = torch.randn(10, 256)
+assert torch.allclose(block_rotate(W, H) @ block_rotate(x, H).t(), W @ x.t(), atol=1e-4)
+print("block rotation ok")

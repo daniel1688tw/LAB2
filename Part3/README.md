@@ -55,6 +55,11 @@ bash sweep.sh                            # 報告用的全部實驗（baseline�
 
 量化對象：36 層 × 7 個 Linear（與 Part 2 相同），embedding / lm_head 保持 FP16。
 
+7. **（選用）Block Hadamard rotation**（`--rotate 32`，參考 *Block Rotation is All You Need for MXFP4*）：
+   在每個 32 元素的 MX block 內做 Hadamard 旋轉，權重以 `W(I⊗H)` 儲存、activation 推論時 `x(I⊗H)` 線上旋轉，
+   全精度下乘積不變；旋轉讓 block 內分佈更接近高斯，降低 MXFP4 的誤差。旋轉矩陣是固定常數，不需要資料。
+   預設關閉（純 format selection）；`sweep.sh` 會比較開／關。
+
 ## 3. 為何是 calibration-free
 
 所有決策（每個 block 的 scale、每個 tile 的格式、bit 分配）都只用到權重本身與 RMSNorm 的 γ（也是權重），
@@ -66,7 +71,8 @@ bash sweep.sh                            # 報告用的全部實驗（baseline�
 * 原文的 tile 大小、候選格式集合與選擇準則未知；本實作把它們都做成參數（`--tile`、`--formats`、`--colw`、`--metric`），
   `sweep.sh` 提供比較。
 * 只模擬數值（fake quant），沒有實作 Blackwell kernel；PPL 與實際硬體輸出可能有極小差異（累加順序 / 精度）。
-* 預設預算 4.5 bits/weight（與 NVFP4 同樣大小）；若 PPL 高於 15，可用 `bash run.sh --budget 4.75` 或 `--budget 5.0`。
+* 預設預算 4.5 bits/weight（與 NVFP4 同樣大小）；若 PPL 高於 15，可用 `bash run.sh --budget 4.75`、`--budget 5.0`
+  或 `bash run.sh --rotate 32`。選定最終設定後，把它寫進 `run.sh`（或 `run_ptq.py` 的預設值），讓 TA 直接 `bash run.sh` 就能重現。
 
 ## 5. 檔案
 

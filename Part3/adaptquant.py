@@ -83,6 +83,22 @@ def input_second_moments(layer, config, mode="analytic"):
 
 
 # --------------------------------------------------------------------------------------
+# optional data-free block rotation (Hadamard inside every 32-element MX block)
+# --------------------------------------------------------------------------------------
+def hadamard(n, device):
+    H = torch.ones(1, 1, device=device)
+    while H.shape[0] < n:
+        H = torch.cat([torch.cat([H, H], 1), torch.cat([H, -H], 1)], 0)
+    return H / math.sqrt(n)
+
+
+def block_rotate(x, H):
+    """x [..., K] -> x (I (x) H) along the last dim (H symmetric orthogonal, size b | K)."""
+    b = H.shape[0]
+    return (x.reshape(*x.shape[:-1], x.shape[-1] // b, b) @ H).reshape(x.shape)
+
+
+# --------------------------------------------------------------------------------------
 # per-tile errors
 # --------------------------------------------------------------------------------------
 def tile_sums(x, tr, tc):
@@ -149,9 +165,15 @@ def allocate(errs, tile_elems, bpe, budget_bits_per_elem, id_bits):
 # --------------------------------------------------------------------------------------
 @torch.no_grad()
 def adaptquant(model, formats=("mxfp4", "mxfp6", "mxfp8"), budget=4.5, tile=(128, 128), colw_mode="analytic",
-               metric="rel", scale_search=True, uniform=None, log=print):
-    """Quantize all target Linear weights in place. Returns a stats dict."""
+               metric="rel", scale_search=True, uniform=None, rotate=0, log=print):
+    """Quantize all target Linear weights in place. Returns a stats dict.
+
+    rotate=b > 0: weights are stored in the basis W (I (x) H_b) (Hadamard inside every b-element block
+    along K); ``add_activation_quant(..., rotate=b)`` must then rotate the inputs online, so the
+    product is unchanged in full precision.
+    """
     layers = model.model.layers
+    Hrot = hadamard(rotate, next(model.parameters()).device) if rotate else None
     if uniform is not None:
         formats = (uniform,)
     for f in formats:
@@ -165,6 +187,10 @@ def adaptquant(model, formats=("mxfp4", "mxfp6", "mxfp8"), budget=4.5, tile=(128
     for li, layer in enumerate(layers):
         cw = input_second_moments(layer, model.config, colw_mode)
         for t, m in block_linears(layer).items():
+            if Hrot is not None:  # rotated basis; independent inputs -> block-averaged second moments
+                m.weight.data = block_rotate(m.weight.data.float(), Hrot).to(m.weight.dtype)
+                c = cw[t].view(-1, rotate).mean(1, keepdim=True).expand(-1, rotate).reshape(-1)
+                cw[t] = c
             W = m.weight.data
             o, i = W.shape
             tr, tc = min(tile[0], o), min(tile[1], i)
@@ -221,13 +247,22 @@ def adaptquant(model, formats=("mxfp4", "mxfp6", "mxfp8"), budget=4.5, tile=(128
     return stats
 
 
-def add_activation_quant(model, fmt="mxfp8"):
-    """Fake-quantize the input of every target Linear (dynamic, per 32-element block along K)."""
+def add_activation_quant(model, fmt="mxfp8", rotate=0):
+    """Fake-quantize the input of every target Linear (dynamic, per 32-element block along K).
+
+    fmt=None keeps the activations in full precision (only the online rotation, if any, is applied).
+    """
     handles = []
+    Hrot = hadamard(rotate, next(model.parameters()).device) if rotate else None
 
     def hook(mod, inp):
         x = inp[0]
-        return (mx_quantize(x, fmt).to(x.dtype),) + tuple(inp[1:])
+        y = x
+        if Hrot is not None:
+            y = block_rotate(y.float(), Hrot)
+        if fmt is not None:
+            y = mx_quantize(y, fmt)
+        return (y.to(x.dtype),) + tuple(inp[1:])
 
     for layer in model.model.layers:
         for m in block_linears(layer).values():

@@ -67,7 +67,7 @@
 **壓縮策略**
 * 結構化剪枝 MLP intermediate channel：以 `down_proj` 輸入 Hessian 的 OBS 分數 `‖W_:,j‖²/[H⁻¹]_jj` 選擇 channel，
   批次移除並以閉式公式補償剩餘權重（SlimGPT 類），同時刪除 `gate/up` 的對應 row。前 2 層、最後 1 層不剪，channel 數對齊 128。
-* 剪掉 21% 的目標參數（實際：【待填 pruning rate】），矩陣真的變小，不需要 mask。
+* 剪掉 20.3% 的目標參數（實際：【待填 pruning rate】），矩陣真的變小，不需要 mask。
 * 剪枝後重新量測敏感度，再以 RHT + GPTQ 混合精度量化到 rate 0.851（剩餘權重平均約 3 bits）。
 
 **結果**：Pruning Rate【待填】、Compression Ratio【待填】、PPL【待填】
@@ -76,7 +76,7 @@
 * 為何選結構化剪枝：非結構化剪枝 20% 需要 mask/index（bitmask 就要 1 bit/weight），在 2.4 bits/weight 的總預算下不划算；
   結構化剪枝直接縮小矩陣，剪 20% 等於把量化預算放寬到 2.4/0.8 = 3.0 bits。
 * 只剪枝（8-bit 量化）的 PPL：【待填 c4_prune_only】→ 剪枝本身的損失；再量化後：【待填】。
-* 剪枝比例 0.21 vs 0.25：【待填 c4_prune025】（剪多一點可讓量化 bits 變多，兩者的取捨）。
+* 剪枝比例 0.203 vs 0.25：【待填 c4_prune025】（剪多一點可讓量化 bits 變多，兩者的取捨）。
 
 ## 5. 總結
 

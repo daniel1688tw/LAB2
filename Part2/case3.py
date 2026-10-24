@@ -9,7 +9,7 @@ Strategy:
    target (0.8 * 8/16 = 40% of the size -> 60%), the first layers are kept in float16 until the
    overall rate lands just above ``rate``.
 """
-from common import BASE_BITS, get_calib_data, get_config, log, report, set_seed, target_linears
+from common import BASE_BITS, get_calib_data, get_config, log, record_base, report, set_seed, target_linears
 from svd import allocate_ranks, collect_spectra, factor_bits, svd_compress_model, uniform_ranks
 
 DEFAULTS = dict(
@@ -17,7 +17,7 @@ DEFAULTS = dict(
     svd_ratio=0.20,         # SVD compression rate (parameter reduction from the low-rank factors)
     svd_margin=0.002,       # aim slightly above the required 20%
     rank_alloc="global",    # "global": energy-based allocation across layers, "uniform": same ratio everywhere
-    min_rank_frac=0.05,
+    min_rank_frac=0.10,     # never truncate a factorized layer below 10% of its full rank
     factor_bits=None,       # defaults to wbits (8)
     type_weights={},        # optional per-type weights of the truncation loss, e.g. {"down_proj": 2.0}
     seed=0,
@@ -25,6 +25,8 @@ DEFAULTS = dict(
 
 
 def compress(model, tokenizer, rate, wbits=None, seed=0):
+    if not hasattr(model, "_base_linear_numel"):  # in case the caller did not call common.record_base
+        record_base(model)
     cfg = get_config("case3", DEFAULTS)
     cfg["seed"] = seed
     set_seed(seed)

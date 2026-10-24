@@ -109,7 +109,7 @@ Pass 2 依層序用已壓縮模型的輸入重新白化並分解。因子 `A = U
 ### Case 4：OBS 結構化剪枝（`prune.py`，SlimGPT 類）
 以 `down_proj` 輸入的 Hessian 計算 channel 分數 `‖W_:,j‖² / [H⁻¹]_jj`，每次移除 32 個最不重要的 channel，
 並以 OBS 閉式公式更新剩餘權重（least-squares 重建 MLP 輸出），同時刪掉 `gate/up` 對應的 row。
-前 2 層與最後 1 層不剪，其餘層平均分配，channel 數對齊 128。預設移除 21% 的目標參數，再對剪枝後的模型
+前 2 層與最後 1 層不剪，其餘層平均分配，channel 數對齊 128。預設移除 20.3% 的目標參數（剛好超過 20%；多剪 1% 只換到約 0.03 bit/weight 的量化預算），再對剪枝後的模型
 重新做敏感度分析 + RHT + GPTQ 混合精度，使整體 CR ≥ 85.1%。
 
 ## 5. 若 PPL 沒達標的建議調整順序
@@ -129,6 +129,8 @@ LAB2_MODEL=$TB/tiny-qwen3 LAB2_RUN_EVAL=tests/run_eval_cpu.py LAB2_SKIP_INSTALL=
 LAB2_CASE1_CFG='{"nsamples":16,"seqlen":512,"sens_nsamples":4,"sens_seqlen":256}' ... bash run.sh
 ```
 小模型（6 層、hidden 256、基準 PPL 45.83）上四個 case 都能完整跑完並達到目標壓縮率：Case 1 75.5% / 45.89、Case 2 81.1% / 45.89、Case 3 50.0% / 45.87、Case 4 85.1% / 46.05（小模型對量化極不敏感，數值只代表流程正確，不代表 Qwen3-4B 的結果）。
+另外 `python tests/test_realdim.py` 以 Qwen3-4B 完全相同的層維度（hidden 2560、intermediate 9728、32/8 heads）建 3 層隨機模型
+在 CPU 上跑 Case 2/3/4：壓縮率 81.10% / 50.14%（SVD 22.86%）/ 85.12%（剪枝 20.45%，9728 → 5760、5632 channels），輸出皆為有限值。
 
 ## 7. 參考
 GPTQ (Frantar et al., ICLR 2023)；QuIP (Chee et al., NeurIPS 2023)、QuIP# (Tseng et al., ICML 2024)、QuaRot (Ashkboos et al., 2024)；

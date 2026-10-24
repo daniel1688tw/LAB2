@@ -23,3 +23,7 @@ r --budget 4.5 --tile 128x32
 r --budget 4.5 --tile 256x256
 r --budget 4.5 --formats mxfp4,nvfp4,mxfp6,mxfp8 --tile 128x128
 r --budget 4.5 --formats mxfp4,mxfp6
+# data-free block Hadamard rotation inside the MX blocks (online activation rotation)
+r --uniform mxfp4 --act none --rotate 32
+r --budget 4.5 --rotate 32
+r --budget 4.25 --rotate 32 --formats mxfp4,mxfp6,mxfp8

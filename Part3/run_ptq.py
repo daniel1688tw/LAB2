@@ -31,6 +31,7 @@ def main():
     ap.add_argument("--metric", default="rel", choices=["rel", "abs"])
     ap.add_argument("--no-scale-search", action="store_true", help="plain OCP floor rule for the E8M0 scale")
     ap.add_argument("--act", default="mxfp8", help="activation format (mxfp8 / mxfp6 / mxfp4) or 'none'")
+    ap.add_argument("--rotate", type=int, default=0, help="Hadamard block rotation size inside MX blocks (0 = off, 32)")
     ap.add_argument("--uniform", default=None, help="baseline: one format for all tiles (e.g. mxfp4, nvfp4)")
     ap.add_argument("--fp16", action="store_true", help="evaluate the unquantized model")
     ap.add_argument("--json", default=None, help="append the result as a json line to this file")
@@ -45,9 +46,10 @@ def main():
         if not args.fp16:
             stats = adaptquant(model, formats=tuple(args.formats.split(",")), budget=args.budget, tile=(tr, tc),
                                colw_mode=args.colw, metric=args.metric, scale_search=not args.no_scale_search,
-                               uniform=args.uniform, log=lambda *a: print(*a, file=sys.stderr, flush=True))
-            if args.act != "none":
-                add_activation_quant(model, args.act)
+                               uniform=args.uniform, rotate=args.rotate,
+                               log=lambda *a: print(*a, file=sys.stderr, flush=True))
+            if args.act != "none" or args.rotate:
+                add_activation_quant(model, None if args.act == "none" else args.act, args.rotate)
         print(f"quantization time {time.time() - t0:.1f}s", file=sys.stderr)
         ppl = eval_ppl_wikitext2(model, tok)
 

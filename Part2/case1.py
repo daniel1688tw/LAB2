@@ -3,7 +3,7 @@
 Strategy: incoherence processing (randomized Hadamard transform) + GPTQ with a per-layer
 mixed-precision allocation of {4, 3}-bit specs driven by measured KL sensitivity.
 """
-from common import get_config, log, report, set_seed
+from common import get_config, log, record_base, report, set_seed
 from recipes import mixed_precision_gptq
 
 DEFAULTS = dict(
@@ -17,6 +17,8 @@ DEFAULTS = dict(
 
 
 def compress(model, tokenizer, rate, wbits=None, seed=0):
+    if not hasattr(model, "_base_linear_numel"):  # in case the caller did not call common.record_base
+        record_base(model)
     cfg = get_config("case1", DEFAULTS)
     cfg["seed"] = seed
     if wbits is not None:

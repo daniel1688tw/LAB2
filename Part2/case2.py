@@ -4,7 +4,7 @@ Strategy: same pipeline as case 1 (RHT + GPTQ + sensitivity-driven mixed precisi
 ~3-bit budget: candidate specs span 2/3/4 bits and group sizes from 64 to a whole row, so the
 allocator can trade scale overhead and bit width between sensitive and robust layers.
 """
-from common import get_config, log, report, set_seed
+from common import get_config, log, record_base, report, set_seed
 from recipes import mixed_precision_gptq
 
 DEFAULTS = dict(
@@ -18,6 +18,8 @@ DEFAULTS = dict(
 
 
 def compress(model, tokenizer, rate, wbits=None, seed=0):
+    if not hasattr(model, "_base_linear_numel"):  # in case the caller did not call common.record_base
+        record_base(model)
     cfg = get_config("case2", DEFAULTS)
     cfg["seed"] = seed
     if wbits is not None:
