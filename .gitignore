@@ -11,3 +11,7 @@ venv/
 *.safetensors
 .DS_Store
 Thumbs.db
+Part2/logs/
+Part2/cache/
+Part2/logs_pip_install.txt
+Part3/logs/

@@ -4,6 +4,11 @@ from common import BASE_BITS, compressed_linear_bits, get_calib_data, log, targe
 from pipeline import gptq_model
 from quant import parse_spec
 
+# Candidate specs shared by the quantization cases. The sensitivity profile is always computed
+# for the union of these (and the case's own lists), so cases 1 and 2 share one cached profile.
+ALL_SPECS = ["w4g128a", "w4g256a", "w4cha", "w3g64a", "w3g128a", "w3g256a", "w3cha", "w2g64a", "w2g128a"]
+ALL_REFS = ["w4g128a", "w3g128a", "w2g128a"]
+
 
 def filter_specs(specs, wbits):
     """Keep candidate specs whose bit width is within +-1 of ``wbits`` (all of them if wbits is None)."""
@@ -38,8 +43,11 @@ def mixed_precision_gptq(model, tokenizer, rate, cfg, state_tag="fp"):
         key = dict(model=getattr(model.config, "_name_or_path", ""), state=state_tag, rht=cfg.get("rht", True),
                    seed=cfg["seed"], n=cfg["sens_nsamples"], L=cfg["sens_seqlen"], data=cfg["dataset"],
                    mse_grid=cfg.get("mse_grid", 0))
-        log(f"profiling layer sensitivity: specs={specs} refs={refs}")
-        prof = profile_sensitivity(model, prof_ids, specs, refs, cfg, cache_key=key)
+        prof_specs = sorted(set(ALL_SPECS) | set(cfg["specs"]))
+        prof_refs = sorted(set(ALL_REFS) | set(cfg["ref_specs"]))
+        log(f"profiling layer sensitivity: specs={prof_specs} refs={prof_refs}")
+        prof = profile_sensitivity(model, prof_ids, prof_specs, prof_refs, cfg, cache_key=key)
+        log(f"allocation candidates: {specs} (reference specs {refs})")
         table = build_costs(prof, specs, refs, extra)
         assign, used = allocate(table, budget)
         log(f"allocated {used / 8 / 2**20:.1f} MiB of a {budget / 8 / 2**20:.1f} MiB budget")

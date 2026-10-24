@@ -33,10 +33,21 @@ def whitening(H, eps=1e-6):
 
 
 @torch.no_grad()
-def whitened_svd(W, H):
-    S, S_inv = whitening(H)
+def whitened_svd(W, H=None, white=None):
+    """SVD of W S. Pass either H or a precomputed ``white = whitening(H)``."""
+    S, S_inv = white if white is not None else whitening(H)
     U, s, Vh = torch.linalg.svd(W.float() @ S, full_matrices=False)
     return U, s, Vh, S_inv
+
+
+def uniform_ranks(spectra, keep_fraction):
+    """Same parameter fraction for every layer: rank = keep_fraction * m n / (m + n)."""
+    ranks, total = {}, 0
+    for name, (s, m, n) in spectra.items():
+        k = max(1, int(keep_fraction * m * n / (m + n)))
+        ranks[name] = k
+        total += k * (m + n)
+    return ranks, total
 
 
 def dense_rank_limit(m, n):
@@ -101,10 +112,12 @@ def collect_spectra(model, calib_ids, cfg):
     for i, layer in enumerate(layers):
         lin = block_linears(layer)
         stats = collect_stats(layer, sorted(set(SHARED_INPUT.values())), inps, kw)
-        for t, m in lin.items():
-            _, s, _, _ = whitened_svd(m.weight.data, stats[SHARED_INPUT[t]].H)
-            spectra[f"layers.{i}.{t}"] = (s.cpu(), m.out_features, m.in_features)
+        white = {src: whitening(st.H) for src, st in stats.items()}
         del stats
+        for t, m in lin.items():
+            _, s, _, _ = whitened_svd(m.weight.data, white=white[SHARED_INPUT[t]])
+            spectra[f"layers.{i}.{t}"] = (s.cpu(), m.out_features, m.in_features)
+        del white
         free_memory()
         inps = run_block(layer, inps, kw)
     return spectra
@@ -125,15 +138,25 @@ def svd_compress_model(model, calib_ids, ranks, factor_bits_map, cfg):
     for i, layer in enumerate(layers):
         lin = block_linears(layer)
         for group in SEQUENTIAL_GROUPS:
+            dense_q = [t for t in group if ranks.get(f"layers.{i}.{t}") is None
+                       and factor_bits_map.get(f"layers.{i}.{t}", 16) < 16]
+            for t in dense_q:  # layer kept dense: plain per-row quantization
+                name = f"layers.{i}.{t}"
+                m, fb = lin[t], factor_bits_map[name]
+                m.weight.data = rtn_quantize(m.weight.data.float(), QSpec(fb, -1, sym=True)).to(m.weight.dtype)
+                set_linear_bits(model, name, factor_bits(*m.weight.shape, fb), note=f"dense {fb}b")
+                log(f"  {name:22s} dense, {fb}-bit")
             todo = [t for t in group if ranks.get(f"layers.{i}.{t}") is not None]
             if not todo:
                 continue
             stats = collect_stats(layer, sorted({SHARED_INPUT[t] for t in todo}), inps, kw)
+            white = {src: whitening(st.H) for src, st in stats.items()}
+            del stats
             for t in todo:
                 name = f"layers.{i}.{t}"
                 m = lin[t]
                 k = ranks[name]
-                U, s, Vh, S_inv = whitened_svd(m.weight.data, stats[SHARED_INPUT[t]].H)
+                U, s, Vh, S_inv = whitened_svd(m.weight.data, white=white[SHARED_INPUT[t]])
                 sq = s[:k].sqrt()
                 A = U[:, :k] * sq
                 B = (sq.unsqueeze(1) * Vh[:k]) @ S_inv
@@ -146,7 +169,7 @@ def svd_compress_model(model, calib_ids, ranks, factor_bits_map, cfg):
                 set_linear_bits(model, name, bits, note=f"svd r{k} {fb}b")
                 energy = float((s[:k] ** 2).sum() / (s ** 2).sum())
                 log(f"  {name:22s} rank {k:5d}/{min(m.weight.shape):5d} factors {fb:2d}b  kept energy {energy:.4f}")
-            del stats
+            del white
             free_memory()
         inps = run_block(layer, inps, kw)
     del inps

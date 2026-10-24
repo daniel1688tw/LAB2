@@ -49,7 +49,7 @@ def profile_sensitivity(model, calib_ids, specs, ref_specs, cfg, cache_key=None)
         path = _cache_path(cache_dir, dict(cache_key, specs=sorted(specs), refs=sorted(ref_specs)))
         if os.path.exists(path):
             log(f"sensitivity: loading cached profile {path}")
-            return torch.load(path)
+            return torch.load(path, weights_only=False)
 
     layers = get_layers(model)
     dev = next(model.parameters()).device
