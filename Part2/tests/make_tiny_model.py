@@ -22,10 +22,12 @@ args = ap.parse_args()
 torch.manual_seed(0)
 random.seed(0)
 
-files = sorted(glob.glob(os.path.join(sysconfig.get_paths()["stdlib"], "*.py")))
+files = sorted(glob.glob(os.path.join(sysconfig.get_paths()["stdlib"], "**", "*.py"), recursive=True))
+files = [f for f in files if "site-packages" not in f and "/test" not in f]
 random.shuffle(files)
-docs = [open(f, errors="ignore").read() for f in files[:400]]
-train_docs, test_docs, calib_docs = docs[:300], docs[300:340], docs[340:]
+docs = [open(f, errors="ignore").read() for f in files[:600]]
+train_docs, test_docs, calib_docs = docs[:480], docs[480:520], docs[520:]
+assert test_docs and calib_docs, len(docs)
 os.makedirs(args.out, exist_ok=True)
 
 tk = Tokenizer(models.BPE(unk_token=None))
