@@ -1,0 +1,7 @@
+# Grading environment: Python 3.11 + torch==2.5.1+cu121 (already installed; "==2.5.1" accepts the +cu121 build)
+torch==2.5.1
+transformers==4.57.1
+accelerate==1.10.1
+datasets==3.6.0
+tqdm
+numpy
