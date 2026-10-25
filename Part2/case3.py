@@ -1,9 +1,10 @@
 """Case 3: SVD compression rate >= 20%, overall compression rate = 50%, PPL < 50.
 
 Strategy:
-1. truncation-aware whitened SVD (SVD-LLM) of every target layer, with ranks allocated globally
-   from the whitened spectra so that the low-rank factors hold (1 - svd_ratio) of the original
-   parameters (SVD compression rate = svd_ratio, measured at 16 bit);
+1. truncation-aware whitened SVD (SVD-LLM) of every target layer, with the same rank ratio on
+   every layer so that the low-rank factors hold (1 - svd_ratio) of the original parameters
+   (SVD compression rate = svd_ratio, measured at 16 bit); a global energy-based allocator is
+   also implemented (`rank_alloc="global"`) but is worse in practice (see ablation.sh);
 2. the factors (and the few layers the allocator keeps dense) are quantized to ``wbits``
    (default 8, per-row symmetric, ~lossless); since 8-bit everywhere would overshoot the 50%
    target (0.8 * 8/16 = 40% of the size -> 60%), the first layers are kept in float16 until the
@@ -16,7 +17,7 @@ DEFAULTS = dict(
     nsamples=128, seqlen=2048, dataset="wikitext2",
     svd_ratio=0.20,         # SVD compression rate (parameter reduction from the low-rank factors)
     svd_margin=0.002,       # aim slightly above the required 20%
-    rank_alloc="global",    # "global": energy-based allocation across layers, "uniform": same ratio everywhere
+    rank_alloc="uniform",   # "uniform": same ratio everywhere, "global": energy-based allocation across layers
     min_rank_frac=0.10,     # never truncate a factorized layer below 10% of its full rank
     factor_bits=None,       # defaults to wbits (8)
     type_weights={},        # optional per-type weights of the truncation loss, e.g. {"down_proj": 2.0}

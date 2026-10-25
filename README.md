@@ -1,62 +1,68 @@
 # Lab 2：Large Language Model Compression
 
+學號：**315551049**
+
 | 目錄 | 內容 | 狀態 |
 |---|---|---|
-| `Part1/StudentID_Part1.ipynb` | Linear quantization Q1–Q10 | 完成，所有測試在 CPU 上通過（MobileNetV2 的兩個 cell 需在 Kaggle 執行） |
-| `Part2/` | Qwen3-4B 四個壓縮 case（GPTQ + RHT + 混合精度、白化 SVD、OBS 結構化剪枝） | 程式完成並在小模型上端到端驗證；需在 GPU 上跑正式結果 |
-| `Part3/` | Calibration-free per-tile MX 格式選擇（AdaptQuant-style） | 程式完成並在小模型上驗證；需在 GPU 上跑正式結果 |
+| `Part1/StudentID_Part1.ipynb` | Linear quantization Q1–Q10 | 完成，7 個測試全部 `* Test passed.`（含 MobileNetV2 的直方圖與量化圖） |
+| `Part2/` | Qwen3-4B 四個壓縮 case（GPTQ + RHT + 混合精度、白化 SVD、OBS 結構化剪枝） | 完成，四個 case 全數達標（正式結果見下） |
+| `Part3/` | Calibration-free per-tile MX 格式選擇（AdaptQuant-style） | 完成，PPL 14.26（門檻 ≤ 15） |
 | `tools/` | Part 1 填答 / 測試腳本、`make_submission.sh` 打包 | |
 | `lab2_template/` | 助教提供的原始檔案（未修改） | |
 
-> 開發環境沒有 GPU，也無法連到 Hugging Face，所以**所有 Qwen3-4B 的數值都還沒有跑**。程式在
-> (1) 元件單元測試、(2) 自行訓練的 6 層小型 Qwen3（同樣的 `Qwen3ForCausalLM` 架構）+ 未修改的 `run_eval.py`、
-> (3) 與 Qwen3-4B 完全相同層維度的 3 層隨機模型 上驗證過，並在評分環境的版本（Python 3.11、torch 2.5.1、
-> transformers 4.57.1）與新版（torch 2.14、transformers 5.20）都能執行。
+## 正式結果
 
-## 正式實驗步驟（GPU）
+執行環境：Python 3.11.17、`torch 2.5.1+cu124`、`transformers 4.57.1`、`datasets 3.6.0`；
+模型為作業指定的 **`Qwen/Qwen3-4B`**（36 層、hidden 2560、intermediate 9728），
+評估皆使用提供的 `run_eval.py` / `evaluate.py`（WikiText-2 test、seqlen 2048），未修改 PPL 計算。
+原始模型 FP16 PPL = **13.6382**。
 
-需要一張 ≥ 16 GB 的 GPU（Kaggle / Colab T4 即可）與網路（下載 Qwen3-4B 約 8 GB、WikiText-2）。
+| Part | Case | 要求 | 實測 | 結果 |
+|---|---|---|---|---|
+| 2 | Case 1 | CR > 75%、PPL < 15 | **CR 75.50%、PPL 13.87** | 達標 |
+| 2 | Case 2 | CR ≥ 81%、PPL < 20 | **CR 81.10%、PPL 14.82** | 達標 |
+| 2 | Case 3 | SVD CR ≥ 20%、整體 CR 50%、PPL < 50 | **SVD 20.22%、CR 50.02%、PPL 20.29** | 達標 |
+| 2 | Case 4 | Pruning ≥ 20%、CR ≥ 85%、PPL < 50 | **Pruning 20.32%、CR 85.10%、PPL 16.57** | 達標 |
+| 3 | – | PPL ≤ 15（AdaptQuant 13.98） | **4.5 bits、PPL 14.257** | 滿分區間 |
+
+硬體與時間（單張 RTX 4090 24 GB）：Part 2 四個 case 合計約 34 分鐘
+（Case 1 約 9 分、Case 2 約 5 分、Case 3 約 8 分、Case 4 約 9 分，含模型載入與 WikiText-2 評估）；
+Part 3 量化 7.4 秒、評估約 1 分鐘。
+
+## 重現步驟
 
 ```bash
 git clone -b claude/gallant-meitner-e1gegm https://github.com/daniel1688tw/LAB2.git && cd LAB2
-nvidia-smi                                    # 確認有 GPU
 ```
 
 ### Part 1
-在 Kaggle 開啟 `Part1/StudentID_Part1.ipynb`，加入 MobileNetV2 模型（`/kaggle/input/model/pytorch/default/1/mobilenetv2_0.963.pth`），
-Accelerator 選 GPU T4，Run All。所有 `* Test passed.` 都應出現。
+在 Kaggle 開啟 `Part1/StudentID_Part1.ipynb`，加入 MobileNetV2 模型
+（`/kaggle/input/model/pytorch/default/1/mobilenetv2_0.963.pth`），Accelerator 選 GPU T4，Run All。
+所有 `* Test passed.` 都應出現。若要在其他環境執行，把該路徑改成模型實際位置即可。
 
-### Part 2（約 1.5–2 小時）
+### Part 2（GPU，RTX 4090 約 34 分鐘 / T4 約 1.5–2 小時）
 ```bash
 cd Part2
-bash run.sh                 # 評分環境 (torch 2.5.1) 直接執行；輸出四個 case 的 Compression Ratio / PPL
-# Kaggle/Colab 的 torch 版本不同、不想降版時：
-pip install transformers==4.57.1 accelerate==1.10.1 datasets==3.6.0 && LAB2_SKIP_INSTALL=1 bash run.sh
-python run_eval.py          # 原始模型 PPL（報告用）
-bash ablation.sh            # 報告用消融（約 3–4 小時，可分次跑）
+bash run.sh                 # 安裝 requirements、依序跑四個 case、輸出 CR 與 PPL
+python run_eval.py          # 原始模型 PPL（報告用，13.6382）
+bash ablation.sh            # 報告用消融（見 Part2/README.md）
 python summarize_logs.py    # 把 logs/caseN.log 轉成報告表格
 ```
-若某個 case 沒達標，依 `Part2/README.md` 第 5 節調整（例如 `LAB2_CASE2_CFG='{"nsamples":256}' LAB2_CASES=2 bash run.sh`），
-最後把確定的設定寫回 `caseN.py` 的 `DEFAULTS`。
+可只跑部分 case：`LAB2_CASES="1 3" bash run.sh`；或覆寫設定：
+`LAB2_CASE2_CFG='{"nsamples":256}' LAB2_CASES=2 bash run.sh`（詳見 `Part2/README.md`）。
 
-### Part 3（約 10 分鐘 / 每個設定）
+### Part 3（GPU，約 2 分鐘）
 ```bash
 cd Part3
-bash run.sh                 # 預設 4.5 bits、MXFP4/6/8、128x128 tile、MXFP8 activation
-bash run.sh --budget 4.75   # 若 PPL > 15 可提高預算，或加 --rotate 32（block Hadamard 旋轉）
-bash sweep.sh               # baseline 與消融（結果在 logs/results.jsonl）
+bash run.sh                 # 4.5 bits、MXFP4/6/8、128x128 tile、MXFP8 activation
+bash run.sh --fp16          # 原始模型 PPL
+bash sweep.sh               # 報告用消融（結果在 logs/results.jsonl）
 ```
 
-### 小模型上的驗證結果（流程正確性，非正式數值）
-| | Case 1 | Case 2 | Case 3 | Case 4 | Part 3（4.5 bits） |
-|---|---|---|---|---|---|
-| 6 層小型 Qwen3（基準 PPL 45.83） | 75.5% / 45.89 | 81.1% / 45.89 | 50.0%（SVD 20.2%）/ 45.87 | 85.1%（剪枝 20.8%）/ 45.90 | 45.92（+rotate 45.80） |
-| Qwen3-4B 層維度、3 層隨機權重 | – | 81.10% | 50.14%（SVD 22.9%） | 85.12%（剪枝 20.5%） | – |
-
 ### 報告與打包
-* 報告草稿：`Part2/StudentID_report.md`、`Part3/StudentID_report.md`（方法、分析已寫好，`【待填】` 處填入實驗數值），
-  轉成 PDF 存成 `Part2/StudentID_report.pdf`、`Part3/StudentID_report.pdf`。
-* 打包：`bash tools/make_submission.sh <學號>` → `dist/<學號>.zip`（自動改名 `<學號>_Part1.ipynb`、`<學號>_run.sh`、`<學號>_report.pdf`）。
+* 報告：`Part2/StudentID_report.md`、`Part3/StudentID_report.md`（已填入正式數值），
+  PDF 為 `Part2/315551049_report.pdf`、`Part3/315551049_report.pdf`。
+* 打包：`bash tools/make_submission.sh 315551049` → `dist/315551049.zip`。
 
 ## 不需要 GPU 的測試
 ```bash

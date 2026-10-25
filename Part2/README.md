@@ -7,14 +7,28 @@
 |---|---|---|---|
 | 1 | CR > 75%，PPL < 15 | rate 0.755、wbits 4 | RHT + GPTQ + 依敏感度的 {4,3}-bit 混合精度 |
 | 2 | CR ≥ 81%，PPL < 20 | rate 0.811、wbits 3 | RHT + GPTQ + 依敏感度的 {4,3,2}-bit 混合精度 |
-| 3 | SVD CR ≥ 20%，整體 CR = 50%，PPL < 50 | rate 0.5、wbits 8 | 白化 SVD（SVD-LLM）+ 全域 rank 分配 + 8-bit 因子 |
+| 3 | SVD CR ≥ 20%，整體 CR = 50%，PPL < 50 | rate 0.5、wbits 8 | 白化 SVD（SVD-LLM）+ 均勻 rank 分配 + 8-bit 因子 |
 | 4 | Pruning ≥ 20%，CR ≥ 85%，PPL < 50 | rate 0.851、wbits 3 | OBS 結構化剪枝 MLP channel + RHT + GPTQ 混合精度 |
+
+## 0. 正式結果（RTX 4090 24 GB 實測）
+
+原始 Qwen3-4B（FP16）PPL = **13.6382**（`python run_eval.py`）。
+
+| Case | 實測 Compression Ratio | 實測 PPL | 要求 | 結果 |
+|---|---:|---:|---|---|
+| 1 | **75.50%** | **13.87** | CR > 75%、PPL < 15 | 達標 |
+| 2 | **81.10%** | **14.82** | CR ≥ 81%、PPL < 20 | 達標 |
+| 3 | **50.02%**（SVD 20.22%） | **20.29** | SVD ≥ 20%、CR = 50%、PPL < 50 | 達標 |
+| 4 | **85.10%**（pruning 20.32%） | **16.57** | Pruning ≥ 20%、CR ≥ 85%、PPL < 50 | 達標 |
+
+* 各 case 的逐層 bit 配置、SVD rank、剪枝計畫與各層型儲存量都在 `logs/caseN.log`（檔尾有 CR 與 PPL）。
+* 消融（`bash ablation.sh`）的實測值見報告 PDF 的 5.1 節。
 
 ## 1. 執行
 
 ```bash
 cd Part2
-bash run.sh            # = bash StudentID_run.sh（繳交前把 StudentID 改成學號）
+bash run.sh            # = bash <學號>_run.sh
 ```
 
 `run.sh` 會自動：(1) `pip install -r requirements.txt`；(2) 每個 case 都從原始 Qwen3-4B 重新載入並壓縮；
@@ -30,8 +44,9 @@ PPL: xx.xx
 完整過程（每層的 bit 配置、GPTQ loss、rank、剪枝計畫、各層型的儲存量）寫在 `logs/caseN.log`。
 
 * 環境：Python 3.11、`torch==2.5.1+cu121`（評分環境），單張 T4 16 GB 即可（峰值約 11–12 GB）。
-* 時間（T4 估計）：Case 1 ≈ 25 分（含 ~11 分敏感度分析）、Case 2 ≈ 15 分（共用 Case 1 的敏感度快取 `cache/`）、
-  Case 3 ≈ 15 分、Case 4 ≈ 30 分，整體約 1.5–2 小時（第一次還要下載 8 GB 模型與 WikiText-2）。
+* 時間（RTX 4090 24 GB 實測）：Case 1 ≈ 9 分（含敏感度分析）、Case 2 ≈ 5 分（共用 Case 1 的敏感度快取 `cache/`）、
+  Case 3 ≈ 8 分、Case 4 ≈ 9.5 分，四個 case 合計約 34 分鐘（含模型載入與 PPL 評估）。
+  T4 約 1.5–2 小時；第一次還要下載 8 GB 模型與 WikiText-2。
 * 只跑部分 case：`LAB2_CASES="1 3" bash run.sh`；不重裝套件：`LAB2_SKIP_INSTALL=1 bash run.sh`。
 * 單獨跑一個 case：`python run_eval.py --case 2 --rate 0.811 --wbits 3`；原始模型：`python run_eval.py`。
 
@@ -41,9 +56,9 @@ PPL: xx.xx
 
 ```bash
 LAB2_CASE2_CFG='{"nsamples": 256}' LAB2_CASES=2 bash run.sh
-LAB2_CASE2_CFG='{"specs": ["w4g128a","w4cha","w3g64a","w3g128a","w3g256a","w3cha"]}' LAB2_CASES=2 bash run.sh   # 不用 2-bit
+LAB2_CASE2_CFG='{"specs": ["w4g128a","w4cha","w3g64a","w3g128a","w3g256a","w3cha"]}' LAB2_CASES=2 bash run.sh   # 不用 2-bit（實測 PPL 14.66，比預設的 14.82 好）
 LAB2_CASE4_CFG='{"prune_ratio": 0.20, "skip_first": 3}' LAB2_CASES=4 bash run.sh
-LAB2_CASE3_CFG='{"rank_alloc": "uniform"}' LAB2_CASES=3 bash run.sh
+LAB2_CASE3_CFG='{"rank_alloc": "global"}' LAB2_CASES=3 bash run.sh   # 全域能量分配（實測 PPL 30.74，比均勻分配的 20.29 差）
 ```
 
 spec 字串格式：`w<bits>g<group>a|s` 或 `w<bits>ch a|s`（`ch` = 每個 output row 一組，`a` = asymmetric、`s` = symmetric）。
@@ -100,23 +115,24 @@ dampening 1%。
 敏感度結果快取在 `cache/`，Case 1/2 共用（快取以設定為 key、不含程式版本：修改 `alloc.py` / `quant.py` 後請先 `rm -rf cache`）。
 
 ### Case 3：白化 SVD（`svd.py`，SVD-LLM）
-`H = S Sᵀ`（eigendecomposition），對 `W S` 做 SVD；截斷誤差 `‖(W−W_k)X‖² = Σ_{i>k} σ_i²`，所以在白化空間截斷對輸出是最佳的。
-Pass 1 在原始模型上取得每層白化奇異值，依「丟掉的能量比例」做**全域 Lagrangian rank 分配**
-（每層可選擇保持 dense 或 rank `k ≤ mn/(m+n)`），使參數量 ≤ 79.8%（SVD CR ≥ 20.2%）。
-Pass 2 依層序用已壓縮模型的輸入重新白化並分解。因子 `A = U_k√Σ_k`、`B = √Σ_k V_kᵀ S⁻¹` 量化成 8-bit（每 row 對稱）；
+`H = S Sᵀ`（eigendecomposition），對 `W S` 做 SVD；截斷誤差 `‖(W−Wₖ)X‖² = Σ(i>k) σᵢ²`，所以在白化空間截斷對輸出是最佳的。
+Pass 1 在原始模型上取得每層白化奇異值，預設把同樣的 rank 比例套用到每一層（`rank_alloc="uniform"`），
+使參數量 ≤ 79.8%（SVD CR ≥ 20.2%）。另實作全域 Lagrangian 能量分配（`rank_alloc="global"`），
+但它偏好能量大的前段層、實測 PPL 30.74，比均勻分配的 20.29 差。
+Pass 2 依層序用已壓縮模型的輸入重新白化並分解。因子 `A = Uₖ√Σₖ`、`B = √Σₖ Vₖᵀ S⁻¹` 量化成 8-bit（每 row 對稱）；
 8-bit 全量化會到 60%，所以從前面的層開始把因子留在 FP16，直到整體 CR 剛好 ≥ 50%。
 
 ### Case 4：OBS 結構化剪枝（`prune.py`，SlimGPT 類）
 以 `down_proj` 輸入的 Hessian 計算 channel 分數 `‖W_:,j‖² / [H⁻¹]_jj`，每次移除 32 個最不重要的 channel，
 並以 OBS 閉式公式更新剩餘權重（least-squares 重建 MLP 輸出），同時刪掉 `gate/up` 對應的 row。
-前 2 層與最後 1 層不剪，其餘層平均分配，channel 數對齊 128。預設移除 20.3% 的目標參數（剛好超過 20%；多剪 1% 只換到約 0.03 bit/weight 的量化預算），再對剪枝後的模型
+前 2 層與最後 1 層不剪，其餘層平均分配，channel 數對齊 128。預設移除 20.3% 的目標參數（剛好超過 20%；實測多剪到 25% 反而使 PPL 從 16.57 升到 16.69），再對剪枝後的模型
 重新做敏感度分析 + RHT + GPTQ 混合精度，使整體 CR ≥ 85.1%。
 
 ## 5. 若 PPL 沒達標的建議調整順序
 
 * Case 1（PPL ≥ 15）：`nsamples` 256；`specs` 只留 `w4*`/`w3g128a`；確認 `rht: true`。
 * Case 2（PPL ≥ 20）：`nsamples` 256、`sens_nsamples` 16；去掉 2-bit 候選（見上）；或加入 `w3g64a` 以外的 4-bit 候選。
-* Case 3（PPL ≥ 50）：`rank_alloc: "uniform"` 比較；`type_weights` 例如 `{"down_proj": 2, "v_proj": 2}`。
+* Case 3（PPL ≥ 50）：`rank_alloc: "global"` 比較（實測較差）；`type_weights` 例如 `{"down_proj": 2, "v_proj": 2}`。
 * Case 4（PPL ≥ 50）：`prune_ratio` 0.20（下限）、`skip_first` 3–4；或提高 `rate` 以外的 nsamples。
 
 ## 6. 測試（不需 GPU）

@@ -3,6 +3,11 @@
 目標：在**不使用任何校正資料**的前提下量化 `Qwen/Qwen3-4B`，以提供的 `evaluate.py`（WikiText-2 test，seqlen 2048）
 評估 PPL；參考值 AdaptQuant PPL 13.98（≤ 15 即滿分）。T4 不支援 MX 低精度 kernel，所以以 fake quantization 模擬數值。
 
+**正式結果（RTX 4090 24 GB，`bash run.sh`）**：4.5 bits → **PPL 14.257**（FP16 基準 13.6382）。
+量化時間 7.4 秒，評估約 1 分鐘。格式佔比 MXFP4 87.51% / MXFP6 12.49% / MXFP8 0%，
+每層型平均 bits：q 4.91、k 6.18、v 6.17、o 4.99、gate 4.26、up 4.25、down 4.26。
+完整 sweep（21 組）見 `logs/results.jsonl`，分析見報告 PDF `StudentID_report.pdf`。
+
 ## 1. 重建環境與執行（TA 只需要這一節）
 
 ```bash
@@ -17,7 +22,7 @@ bash run.sh                         # 量化 + 評估，輸出最終 PPL
 
 ```text
 Average bits per weight: 4.500
-PPL: xx.xx
+PPL: 14.26
 ```
 
 完整紀錄：`logs/adaptquant.log`（每種格式佔比、每層型 / 每個 decoder layer 的平均 bits），結果也會附加到 `logs/results.jsonl`。
@@ -85,4 +90,4 @@ bash sweep.sh                            # 報告用的全部實驗（baseline�
 | `evaluate.py` | 助教提供的評估程式（未修改） |
 | `sweep.sh` | 報告用實驗 |
 | `tests/test_mx.py` | 格式與分配的單元測試（CPU） |
-| `StudentID_report.md` | 報告草稿（輸出成 `StudentID_report.pdf`） |
+| `StudentID_report.pdf` | 報告 PDF |
