@@ -25,7 +25,7 @@ Average bits per weight: 4.500
 PPL: 14.26
 ```
 
-完整紀錄：`logs/adaptquant.log`（每種格式佔比、每層型 / 每個 decoder layer 的平均 bits），結果也會附加到 `logs/results.jsonl`。
+完整紀錄：`logs/adaptquant.log`（每種格式佔比、每層型 / 每個 decoder layer 的平均 bits、量化後的相對權重誤差 `sum|W-Q|²/sum|W|²`），結果也會附加到 `logs/results.jsonl`（`logs/` 於執行時產生，不在 repo 中）。
 等價的單一指令：
 
 ```bash

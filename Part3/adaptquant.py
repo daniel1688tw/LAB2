@@ -215,6 +215,7 @@ def adaptquant(model, formats=("mxfp4", "mxfp6", "mxfp8"), budget=4.5, tile=(128
     stats = {"avg_bits": float(avg_bits), "format_share": {}, "type_bits": {}}
     share = torch.zeros(len(formats), dtype=torch.float64)
     type_bits = {t: [0.0, 0.0] for t in TARGET_TYPES}
+    err_sum, ref_sum = 0.0, 0.0  # diagnostic: how much the weights actually changed
     pos = 0
     for (li, t, (tr, tc), n_tiles) in entries:
         m = block_linears(layers[li])[t]
@@ -233,7 +234,12 @@ def adaptquant(model, formats=("mxfp4", "mxfp6", "mxfp8"), budget=4.5, tile=(128
             share[fi] += n * tr * tc
             type_bits[t][0] += n * tr * tc * float(bpe[fi])
         type_bits[t][1] += o * i
-        m.weight.data = Wq.to(m.weight.dtype)
+        Wq = Wq.to(m.weight.dtype)
+        err_sum += float(((Wq.float() - W) ** 2).sum())
+        ref_sum += float((W ** 2).sum())
+        m.weight.data = Wq
+    stats["weight_rel_mse"] = err_sum / max(ref_sum, 1e-30)
+    log(f"relative weight error sum|W-Q|^2 / sum|W|^2 = {stats['weight_rel_mse']:.3e}")
     stats["format_share"] = {f: float(share[k] / share.sum()) for k, f in enumerate(formats)}
     stats["type_bits"] = {t: v[0] / v[1] for t, v in type_bits.items() if v[1]}
     log("format share: " + ", ".join(f"{f} {s:.2%}" for f, s in stats["format_share"].items()))

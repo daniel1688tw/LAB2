@@ -21,7 +21,7 @@
 | 3 | **50.02%**（SVD 20.22%） | **20.29** | SVD ≥ 20%、CR = 50%、PPL < 50 | 達標 |
 | 4 | **85.10%**（pruning 20.32%） | **16.57** | Pruning ≥ 20%、CR ≥ 85%、PPL < 50 | 達標 |
 
-* 各 case 的逐層 bit 配置、SVD rank、剪枝計畫與各層型儲存量都在 `logs/caseN.log`（檔尾有 CR 與 PPL）。
+* 各 case 的逐層 bit 配置、SVD rank、剪枝計畫與各層型儲存量都在 `logs/caseN.log`（執行 `run.sh` 時產生，不在 repo 中）。
 * 消融（`bash ablation.sh`）的實測值見報告 PDF 的 5.1 節。
 
 ## 1. 執行
